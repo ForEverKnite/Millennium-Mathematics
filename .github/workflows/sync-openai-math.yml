@@ -1,0 +1,41 @@
+name: Preserve and sync OpenAI mathematics
+
+on:
+  schedule:
+    - cron: '17 8 * * *'  # Daily, UTC; GitHub may delay scheduled runs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openai-math-archive-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout archive
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Record snapshot before incorporating upstream updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/openai/math.git
+          git fetch upstream main
+          git checkout main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo 'Already incorporates latest upstream main.'
+            exit 0
+          fi
+          git config user.name 'mathematics-archive-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          tag="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+          git tag -a "$tag" -m "Archive state before syncing upstream $(git rev-parse --short upstream/main)"
+          git push origin "$tag"
+          git merge --no-edit upstream/main
+          git push origin main
