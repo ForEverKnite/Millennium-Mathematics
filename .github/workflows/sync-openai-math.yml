@@ -107,12 +107,12 @@ jobs:
 
   upstream_metadata_review_alert:
     needs: sync
-    if: ${{ needs.sync.result == 'success' && needs.sync.outputs.upstream_metadata_review == 'true' }}
+    if: ${{ always() && (needs.sync.result == 'failure' || needs.sync.outputs.upstream_metadata_review == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: STOP-AND-LOOK upstream GitHub configuration changed
         run: |
-          echo "::error title=STOP-AND-LOOK::Upstream .github/ changes need explicit human review. See the sync job summary and the committed .github/upstream-review/ record."
+          echo "::error title=STOP-AND-LOOK::Archive sync failed or upstream .github/ metadata requires review. Inspect sync logs, job summary, and review records before proceeding."
           exit 1
