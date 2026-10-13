@@ -2,7 +2,7 @@ name: Preserve and sync OpenAI mathematics
 
 on:
   schedule:
-    - cron: '17 8 * * *'  # Daily, UTC; GitHub may delay scheduled runs
+    - cron: '17 8 * * *'
   workflow_dispatch:
 
 permissions:
@@ -14,28 +14,105 @@ concurrency:
 
 jobs:
   sync:
+    outputs:
+      upstream_metadata_review: ${{ steps.synchronize.outputs.upstream_metadata_review }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout archive
+      - name: Checkout archive with history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Record snapshot before incorporating upstream updates
+      - name: Snapshot, inspect, and synchronize permitted source changes
+        id: synchronize
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name 'mathematics-archive-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote add upstream https://github.com/openai/math.git
           git fetch upstream main
           git checkout main
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo 'Already incorporates latest upstream main.'
+          git pull --ff-only origin main
+          latest="$(git rev-parse upstream/main)"
+          state='.github/openai-math-upstream-sha'
+          if [[ -f "$state" ]]; then
+            previous="$(cat "$state")"
+            git cat-file -e "${previous}^{commit}"
+          else
+            # One-time migration from the original upstream-merge mechanism.
+            previous="$(git merge-base HEAD "$latest")"
+          fi
+          git merge-base --is-ancestor "$previous" "$latest" || {
+            echo 'STOP: upstream history changed; manual review required.' >&2
+            exit 1
+          }
+          if [[ "$previous" == "$latest" ]]; then
+            echo 'Already examined this upstream commit.'
             exit 0
           fi
-          git config user.name 'mathematics-archive-bot'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          tag="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
-          git tag -a "$tag" -m "Archive state before syncing upstream $(git rev-parse --short upstream/main)"
-          git push origin "$tag"
-          git merge --no-edit upstream/main
-          git push origin main
+          echo 'Upstream changes in GitHub-controlled metadata (REVIEW ONLY):'
+          metadata_changes="$(git diff --name-status --no-renames "$previous" "$latest" -- .github/)"
+          printf '%s\\n' "$metadata_changes"
+          if [[ -n "$metadata_changes" ]]; then
+            echo 'upstream_metadata_review=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'upstream_metadata_review=false' >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "$metadata_changes" ]]; then
+            echo "::warning title=Upstream GitHub metadata review::Upstream changed .github/ files; review the committed report."
+            {
+              echo '## Upstream GitHub metadata changes requiring review'
+              echo "Upstream revision: $latest"
+              echo 'Changes are excluded from the automatic manuscript sync.'
+              echo '~~' ; printf '%s\\n' "$metadata_changes"; echo '~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            mkdir -p .github/upstream-review
+            { printf 'Upstream revision: %s\\n' "$latest"; printf '%s\\n' "$metadata_changes"; } > ".github/upstream-review/$latest.txt"
+            git add -- ".github/upstream-review/$latest.txt"
+          fi
+          echo 'Permitted-content changes under review:'
+          git diff --name-status --no-renames "$previous" "$latest" -- . ':(exclude).github/**'
+          if [[ -n "$(git diff --name-only --no-renames --diff-filter=D "$previous" "$latest" -- . ':(exclude).github/**')" ]]; then
+            echo 'STOP: upstream deletes or renames existing content. Manual review required.' >&2
+            exit 1
+          fi
+          tag="snapshot-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          git tag -a "$tag" -m "Archive before examining upstream $latest"
+          git push origin "refs/tags/$tag"
+          # Apply only content changes; do not import upstream commit ancestry.
+          patch="$(mktemp)"
+          trap 'rm -f "$patch"' EXIT
+          git diff --binary --no-ext-diff --no-renames "$previous" "$latest" -- . ':(exclude).github/**' > "$patch"
+          if [[ -s "$patch" ]]; then
+            git apply --index --3way "$patch"
+          else
+            echo 'No permitted manuscript changes in this upstream revision.'
+          fi
+          printf '%s\n' "$latest" > "$state"
+          git add -- "$state"
+          # Ensure the final commit changes no GitHub-controlled workflow files.
+          if [[ -n "$(git diff --cached --name-only -- .github/workflows/)" ]]; then
+            echo 'STOP: workflow change unexpectedly staged.' >&2
+            exit 1
+          fi
+          git diff --cached --check
+          git commit -m "Archive permitted OpenAI math updates through ${latest:0:12}"
+          git push origin HEAD:main
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test "$(cat "$state")" = "$latest"
+          git ls-remote --exit-code origin "refs/tags/$tag"
+          echo "SUCCESS: archive main advanced and snapshot $tag exists."
+
+  upstream_metadata_review_alert:
+    needs: sync
+    if: ${{ always() && (needs.sync.result == 'failure' || needs.sync.outputs.upstream_metadata_review == 'true') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: STOP-AND-LOOK upstream GitHub configuration changed
+        run: |
+          echo "::error title=STOP-AND-LOOK::Archive sync failed or upstream .github/ metadata requires review. Inspect sync logs, job summary, and review records before proceeding."
+          exit 1
