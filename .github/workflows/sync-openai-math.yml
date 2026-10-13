@@ -69,7 +69,7 @@ jobs:
             echo 'STOP: upstream deletes or renames existing content. Manual review required.' >&2
             exit 1
           fi
-          tag="snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+          tag="snapshot-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
           git tag -a "$tag" -m "Archive before examining upstream $latest"
           git push origin "refs/tags/$tag"
           # Apply only content changes; do not import upstream commit ancestry.
