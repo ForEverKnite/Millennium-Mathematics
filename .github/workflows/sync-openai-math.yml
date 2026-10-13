@@ -49,7 +49,20 @@ jobs:
             exit 0
           fi
           echo 'Upstream changes in GitHub-controlled metadata (REVIEW ONLY):'
-          git diff --name-status --no-renames "$previous" "$latest" -- .github/
+          metadata_changes="$(git diff --name-status --no-renames "$previous" "$latest" -- .github/)"
+          printf '%s\\n' "$metadata_changes"
+          if [[ -n "$metadata_changes" ]]; then
+            echo "::warning title=Upstream GitHub metadata review::Upstream changed .github/ files; review the committed report."
+            {
+              echo '## Upstream GitHub metadata changes requiring review'
+              echo "Upstream revision: $latest"
+              echo 'Changes are excluded from the automatic manuscript sync.'
+              echo '~~' ; printf '%s\\n' "$metadata_changes"; echo '~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            mkdir -p .github/upstream-review
+            { printf 'Upstream revision: %s\\n' "$latest"; printf '%s\\n' "$metadata_changes"; } > ".github/upstream-review/$latest.txt"
+            git add -- ".github/upstream-review/$latest.txt"
+          fi
           echo 'Permitted-content changes under review:'
           git diff --name-status --no-renames "$previous" "$latest" -- . ':(exclude).github/**'
           if [[ -n "$(git diff --name-only --no-renames --diff-filter=D "$previous" "$latest" -- . ':(exclude).github/**')" ]]; then
@@ -60,7 +73,14 @@ jobs:
           git tag -a "$tag" -m "Archive before examining upstream $latest"
           git push origin "refs/tags/$tag"
           # Apply only content changes; do not import upstream commit ancestry.
-          git diff --binary --no-ext-diff --no-renames "$previous" "$latest" -- . ':(exclude).github/**' | git apply --index --3way
+          patch="$(mktemp)"
+          trap 'rm -f "$patch"' EXIT
+          git diff --binary --no-ext-diff --no-renames "$previous" "$latest" -- . ':(exclude).github/**' > "$patch"
+          if [[ -s "$patch" ]]; then
+            git apply --index --3way "$patch"
+          else
+            echo 'No permitted manuscript changes in this upstream revision.'
+          fi
           printf '%s\n' "$latest" > "$state"
           git add -- "$state"
           # Ensure the final commit changes no GitHub-controlled workflow files.
