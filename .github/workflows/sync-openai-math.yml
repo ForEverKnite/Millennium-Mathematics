@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   sync:
+    outputs:
+      upstream_metadata_review: ${{ steps.synchronize.outputs.upstream_metadata_review }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout archive with history
@@ -22,6 +24,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
       - name: Snapshot, inspect, and synchronize permitted source changes
+        id: synchronize
         shell: bash
         run: |
           set -euo pipefail
@@ -51,6 +54,11 @@ jobs:
           echo 'Upstream changes in GitHub-controlled metadata (REVIEW ONLY):'
           metadata_changes="$(git diff --name-status --no-renames "$previous" "$latest" -- .github/)"
           printf '%s\\n' "$metadata_changes"
+          if [[ -n "$metadata_changes" ]]; then
+            echo 'upstream_metadata_review=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'upstream_metadata_review=false' >> "$GITHUB_OUTPUT"
+          fi
           if [[ -n "$metadata_changes" ]]; then
             echo "::warning title=Upstream GitHub metadata review::Upstream changed .github/ files; review the committed report."
             {
@@ -96,3 +104,15 @@ jobs:
           test "$(cat "$state")" = "$latest"
           git ls-remote --exit-code origin "refs/tags/$tag"
           echo "SUCCESS: archive main advanced and snapshot $tag exists."
+
+  upstream_metadata_review_alert:
+    needs: sync
+    if: ${{ needs.sync.result == 'success' && needs.sync.outputs.upstream_metadata_review == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: STOP-AND-LOOK upstream GitHub configuration changed
+        run: |
+          echo "::error title=STOP-AND-LOOK::Upstream .github/ changes need explicit human review. See the sync job summary and the committed .github/upstream-review/ record."
+          exit 1
