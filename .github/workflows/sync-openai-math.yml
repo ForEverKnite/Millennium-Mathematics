@@ -53,7 +53,7 @@ jobs:
           fi
           echo 'Upstream changes in GitHub-controlled metadata (REVIEW ONLY):'
           metadata_changes="$(git diff --name-status --no-renames "$previous" "$latest" -- .github/)"
-          printf '%s\\n' "$metadata_changes"
+          printf '%s\n' "$metadata_changes"
           if [[ -n "$metadata_changes" ]]; then
             echo 'upstream_metadata_review=true' >> "$GITHUB_OUTPUT"
           else
@@ -65,10 +65,10 @@ jobs:
               echo '## Upstream GitHub metadata changes requiring review'
               echo "Upstream revision: $latest"
               echo 'Changes are excluded from the automatic manuscript sync.'
-              echo '~~' ; printf '%s\\n' "$metadata_changes"; echo '~~'
+              echo '~~' ; printf '%s\n' "$metadata_changes"; echo '~~'
             } >> "$GITHUB_STEP_SUMMARY"
             mkdir -p .github/upstream-review
-            { printf 'Upstream revision: %s\\n' "$latest"; printf '%s\\n' "$metadata_changes"; } > ".github/upstream-review/$latest.txt"
+            { printf 'Upstream revision: %s\\n' "$latest"; printf '%s\n' "$metadata_changes"; } > ".github/upstream-review/$latest.txt"
             git add -- ".github/upstream-review/$latest.txt"
           fi
           echo 'Permitted-content changes under review:'
