@@ -1,1 +1,2 @@
-Upstream revision: 1581d4cbdd69a0faf34b2089614fe2a814316a6a\nA	.github/workflows/lock-prs.yml\n
+Upstream revision: 1581d4cbdd69a0faf34b2089614fe2a814316a6a
+A	.github/workflows/lock-prs.yml
