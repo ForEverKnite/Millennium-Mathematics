@@ -85,7 +85,7 @@ jobs:
           trap 'rm -f "$patch"' EXIT
           git diff --binary --no-ext-diff --no-renames "$previous" "$latest" -- . ':(exclude).github/**' > "$patch"
           if [[ -s "$patch" ]]; then
-            git apply --index --3way "$patch"
+            git apply --index --3way --whitespace=warn "$patch"
           else
             echo 'No permitted manuscript changes in this upstream revision.'
           fi
@@ -96,7 +96,9 @@ jobs:
             echo 'STOP: workflow change unexpectedly staged.' >&2
             exit 1
           fi
-          git diff --cached --check
+          # Preserve upstream formatting; whitespace warnings must not block archiving.
+          # Keep --check fatal for newly introduced conflict markers.
+          git -c core.whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab,-indent-with-non-tab,-tab-in-indent,-incomplete-line diff --cached --check
           git commit -m "Archive permitted OpenAI math updates through ${latest:0:12}"
           git push origin HEAD:main
           git fetch origin main
