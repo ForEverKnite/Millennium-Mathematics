@@ -1,0 +1,12 @@
+MANUAL ARCHIVE RECOVERY — 2026-11-25
+Owner approved controlled synchronization after STOP-AND-LOOK run 49 (45677404020).
+Archive before recovery: ba9a6b259501a12f94453c801e14e8574d71ca0d
+Preservation ref: refs/heads/archive/snapshot-20261125-before-run49-recovery
+Previous upstream: f5702854040e97fa7675c21ba37a9608f5f92dd3
+Reviewed upstream: 3344da59991ed94f9ba711217b29c1d760badfa6
+Preflight: all non-.github root tree entries at the prior archive match the previous upstream exactly; upstream .github tree is unchanged. Run 49 log lists 23,284 additions, 23 modifications and these two deleted paths:
+lean/ComparatorChallenges/MatrixMultiplication.json
+lean/ComparatorChallenges/MatrixMultiplication.lean
+The added MatrixExponent challenge pair has substantively different theorem interfaces; not certified as a rename or mathematical equivalent. The removed files are retained at the preservation ref and in archive history, not reintroduced into the current Lean source tree.
+Recovery scope: exact reviewed upstream non-.github content, with existing archive .github configuration retained and upstream checkpoint advanced to the reviewed revision. No new upstream commit ancestry imported. Existing deletion/metadata safeguards remain unchanged. This is custody reconciliation only, not mathematical verification.
+Evidence: https://github.com/ForEverKnite/Millennium-Mathematics/actions/runs/45677404020/job/139428526823
